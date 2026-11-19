@@ -6,6 +6,7 @@
 // a 2D canvas — no Rockstar artwork, logo or font is used anywhere.
 
 export const LAYOUTS = [
+  { id: 'loading', name: 'Loading Screen', panels: 1, blurb: 'Full-bleed hero, title over photo' },
   { id: 'vice-grid', name: 'Vice Grid', panels: 3, blurb: 'Hero + two stacked' },
   { id: 'tilted', name: 'Tilted Snaps', panels: 3, blurb: 'Overlapping snapshots' },
   { id: 'hero-strip', name: 'Hero Strip', panels: 4, blurb: 'Full-bleed + film strip' },
@@ -28,15 +29,33 @@ export const SIZES = [
   { id: '1920x1080', w: 1920, h: 1080, label: 'Wide · 1920 x 1080' },
 ];
 
+/** Title paint styles: the same title, three very different finishes. */
+export const TITLE_STYLES = [
+  { id: 'sunset', name: 'Sunset Gradient', blurb: 'Warm gradient fill' },
+  { id: 'chrome', name: 'Chrome', blurb: 'Silver-blue metal' },
+  { id: 'neon-outline', name: 'Neon Outline', blurb: 'Glowing outline only' },
+];
+
+/** Hand-drawn decor stamps the user can drop on the cover. All four are
+ *  drawn with canvas paths here — no Rockstar artwork, logo or font. */
+export const STAMPS = [
+  { id: 'sun', name: 'Sun', blurb: 'Setting sun', glyph: '☀' },
+  { id: 'palm', name: 'Palm', blurb: 'Palm tree', glyph: '🌴' },
+  { id: 'bolt', name: 'Bolt', blurb: 'Lightning', glyph: '⚡' },
+  { id: 'star', name: 'Star', blurb: 'Sparkle star', glyph: '✦' },
+];
+
 /** A fresh cover state: four photo slots, panels assigned round-robin. */
 export function defaultState() {
   return {
-    layout: 'vice-grid',
+    layout: 'loading',
     grade: 'sunset',
     title: 'NEON COAST',
     subtitle: 'chasing the sunset',
     badge: 'PALM SHORES',
     stars: 5,
+    titleStyle: 'sunset',
+    stamps: [],
     size: '1080x1080',
     photos: [],
     panels: [],
@@ -66,6 +85,16 @@ export function layoutGeometry(layout, w, h) {
   const top = h - bandH;
   const P = (x, y, pw, ph, rot = 0) => ({ x, y, w: pw, h: ph, rot });
   switch (layout) {
+    case 'loading': {
+      // One hero photo fills the whole cover; the title band sits ON the
+      // photo (overlay) instead of below it, like a game loading screen.
+      const bandY = Math.round(h * 0.6);
+      return {
+        band: { x: 0, y: bandY, w, h: h - bandY },
+        overlay: true,
+        panels: [P(0, 0, w, h)],
+      };
+    }
     case 'tilted': {
       const pw = w * 0.46, ph = top * 0.82;
       return {
@@ -221,12 +250,111 @@ function fitFont(ctx, text, maxWidth, startSize, family, weight = '') {
   return size;
 }
 
+/** Paints the title in the chosen style: gradient, chrome metal or neon outline. */
+function paintTitle(ctx, title, size, band, grade, style) {
+  const x = band.x + band.w * 0.05;
+  const y = band.y + band.h * 0.72;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.lineJoin = 'round';
+  ctx.font = `${size}px Anton, sans-serif`;
+  if (style === 'chrome') {
+    const chrome = ctx.createLinearGradient(0, band.y + band.h * 0.28, 0, band.y + band.h * 0.8);
+    chrome.addColorStop(0, '#f8f9ff'); chrome.addColorStop(0.35, '#c3cede');
+    chrome.addColorStop(0.55, '#7f93b8'); chrome.addColorStop(0.75, '#e8eefc');
+    chrome.addColorStop(1, '#5d7290');
+    ctx.strokeStyle = '#101828'; ctx.lineWidth = Math.max(3, size * 0.07);
+    ctx.strokeText(title, x, y);
+    ctx.fillStyle = chrome;
+    ctx.fillText(title, x, y);
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.font = `${Math.max(8, size * 0.06)}px Anton, sans-serif`;
+  } else if (style === 'neon-outline') {
+    ctx.strokeStyle = grade.sub;
+    ctx.shadowColor = grade.sub; ctx.shadowBlur = size * 0.22;
+    ctx.lineWidth = Math.max(2, size * 0.045);
+    ctx.strokeText(title, x, y);
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1.5, size * 0.02);
+    ctx.strokeText(title, x, y);
+  } else {
+    const titleGrad = ctx.createLinearGradient(0, band.y + band.h * 0.3, 0, band.y + band.h * 0.86);
+    titleGrad.addColorStop(0, grade.title[0]); titleGrad.addColorStop(0.55, grade.title[1]); titleGrad.addColorStop(1, grade.title[2]);
+    ctx.strokeStyle = '#14081f'; ctx.lineWidth = Math.max(3, size * 0.09);
+    ctx.strokeText(title, x, y);
+    ctx.fillStyle = titleGrad;
+    ctx.fillText(title, x, y);
+  }
+}
+
+/** One decor stamp, drawn with canvas paths at relative coords (0..1). */
+function drawStamp(ctx, st, w, h) {
+  const cx = st.x * w, cy = st.y * h, s = st.size * w;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate((st.rot || 0) * Math.PI / 180);
+  ctx.lineJoin = 'round';
+  const ink = '#14081f';
+  if (st.type === 'sun') {
+    ctx.strokeStyle = '#ffd319'; ctx.lineWidth = s * 0.07; ctx.lineCap = 'round';
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * s * 0.36, Math.sin(a) * s * 0.36);
+      ctx.lineTo(Math.cos(a) * s * 0.58, Math.sin(a) * s * 0.58);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#ffd319';
+    ctx.beginPath(); ctx.arc(0, 0, s * 0.28, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = ink; ctx.lineWidth = s * 0.045;
+    ctx.beginPath(); ctx.arc(0, 0, s * 0.28, 0, Math.PI * 2); ctx.stroke();
+  } else if (st.type === 'palm') {
+    ctx.shadowColor = 'rgba(20,8,31,0.8)'; ctx.shadowBlur = s * 0.06;
+    drawPalm(ctx, 0, s * 0.45, s * 0.9, '#2af598');
+    ctx.shadowBlur = 0;
+  } else if (st.type === 'bolt') {
+    ctx.beginPath();
+    ctx.moveTo(s * 0.12, -s * 0.55); ctx.lineTo(s * 0.52, -s * 0.55);
+    ctx.lineTo(s * 0.08, s * 0.02); ctx.lineTo(s * 0.38, s * 0.02);
+    ctx.lineTo(-s * 0.28, s * 0.55); ctx.lineTo(-s * 0.06, -s * 0.06);
+    ctx.lineTo(-s * 0.36, -s * 0.06);
+    ctx.closePath();
+    ctx.fillStyle = '#ffe259'; ctx.fill();
+    ctx.strokeStyle = ink; ctx.lineWidth = s * 0.045; ctx.stroke();
+  } else {
+    // Sparkle star: four curved points, white fill with a cyan glow.
+    ctx.shadowColor = '#7df9ff'; ctx.shadowBlur = s * 0.18;
+    ctx.beginPath();
+    ctx.moveTo(0, -s * 0.55);
+    ctx.quadraticCurveTo(s * 0.08, -s * 0.08, s * 0.55, 0);
+    ctx.quadraticCurveTo(s * 0.08, s * 0.08, 0, s * 0.55);
+    ctx.quadraticCurveTo(-s * 0.08, s * 0.08, -s * 0.55, 0);
+    ctx.quadraticCurveTo(-s * 0.08, -s * 0.08, 0, -s * 0.55);
+    ctx.closePath();
+    ctx.fillStyle = '#ffffff'; ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = ink; ctx.lineWidth = s * 0.04; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** Index of the topmost stamp under canvas point (x, y), or -1. */
+export function stampAt(state, x, y, w, h) {
+  const stamps = state.stamps || [];
+  for (let i = stamps.length - 1; i >= 0; i--) {
+    const st = stamps[i];
+    const dx = x - st.x * w, dy = y - st.y * h;
+    if (Math.hypot(dx, dy) <= st.size * w * 0.55) return i;
+  }
+  return -1;
+}
+
 /** Draws the whole cover for `state` onto `canvas` (canvas size = export size). */
 export function drawCover(canvas, state) {
   const ctx = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
   const grade = GRADES.find((g) => g.id === state.grade) ?? GRADES[0];
   const geo = layoutGeometry(state.layout, w, h);
+  const overlay = !!geo.overlay;
 
   // Sky: the sunset gradient the whole poster sits on.
   const sky = ctx.createLinearGradient(0, 0, w, h);
@@ -258,6 +386,9 @@ export function drawCover(canvas, state) {
       ctx.translate(-rect.w / 2, -rect.h / 2);
       drawPhotoInto(ctx, img, { x: 0, y: 0, w: rect.w, h: rect.h }, panel, grade);
       ctx.restore();
+    } else if (overlay) {
+      // Loading Screen: the hero photo runs edge to edge, no frame.
+      drawPhotoInto(ctx, img, rect, panel, grade);
     } else {
       ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = w * 0.012; ctx.shadowOffsetY = w * 0.006;
       ctx.fillStyle = '#fdf6ec';
@@ -270,22 +401,32 @@ export function drawCover(canvas, state) {
     gradeWash(ctx, rect, grade, w, h);
   });
 
-  // Title band: dark ink slab with halftone dots and palm silhouettes.
+  // Title band: a dark ink slab with halftone dots and palm silhouettes —
+  // or, on the Loading Screen, a sunset scrim over the photo itself.
   const band = geo.band;
-  ctx.fillStyle = '#14081f';
-  ctx.fillRect(band.x, band.y - w * 0.008, band.w, band.h + w * 0.008);
-  const bandGrad = ctx.createLinearGradient(band.x, band.y, band.x, band.y + band.h);
-  bandGrad.addColorStop(0, 'rgba(255,46,136,0.22)'); bandGrad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = bandGrad; ctx.fillRect(band.x, band.y, band.w, band.h);
-  ctx.fillStyle = 'rgba(255,255,255,0.10)';
-  const dotGap = Math.max(14, w * 0.02);
-  for (let dx = band.x + dotGap; dx < band.x + band.w; dx += dotGap) {
-    for (let dy = band.y + dotGap * 0.7; dy < band.y + band.h * 0.32; dy += dotGap) {
-      ctx.beginPath(); ctx.arc(dx, dy, Math.max(1.5, w * 0.0022), 0, Math.PI * 2); ctx.fill();
+  if (overlay) {
+    const scrim = ctx.createLinearGradient(0, band.y - band.h * 0.55, 0, band.y + band.h);
+    scrim.addColorStop(0, 'rgba(20,8,31,0)');
+    scrim.addColorStop(0.45, 'rgba(20,8,31,0.55)');
+    scrim.addColorStop(1, 'rgba(20,8,31,0.88)');
+    ctx.fillStyle = scrim;
+    ctx.fillRect(band.x, band.y - band.h * 0.55, band.w, band.h * 1.55);
+  } else {
+    ctx.fillStyle = '#14081f';
+    ctx.fillRect(band.x, band.y - w * 0.008, band.w, band.h + w * 0.008);
+    const bandGrad = ctx.createLinearGradient(band.x, band.y, band.x, band.y + band.h);
+    bandGrad.addColorStop(0, 'rgba(255,46,136,0.22)'); bandGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = bandGrad; ctx.fillRect(band.x, band.y, band.w, band.h);
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    const dotGap = Math.max(14, w * 0.02);
+    for (let dx = band.x + dotGap; dx < band.x + band.w; dx += dotGap) {
+      for (let dy = band.y + dotGap * 0.7; dy < band.y + band.h * 0.32; dy += dotGap) {
+        ctx.beginPath(); ctx.arc(dx, dy, Math.max(1.5, w * 0.0022), 0, Math.PI * 2); ctx.fill();
+      }
     }
+    drawPalm(ctx, band.x + band.w * 0.93, band.y + band.h * 0.92, band.h * 0.85, 'rgba(0,0,0,0.5)');
+    drawPalm(ctx, band.x + band.w * 0.86, band.y + band.h * 0.96, band.h * 0.6, 'rgba(0,0,0,0.45)');
   }
-  drawPalm(ctx, band.x + band.w * 0.93, band.y + band.h * 0.92, band.h * 0.85, 'rgba(0,0,0,0.5)');
-  drawPalm(ctx, band.x + band.w * 0.86, band.y + band.h * 0.96, band.h * 0.6, 'rgba(0,0,0,0.45)');
 
   // Badge ribbon, tilted, top of the band.
   const badgeText = (state.badge || 'PALM SHORES').toUpperCase();
@@ -301,18 +442,10 @@ export function drawCover(canvas, state) {
   ctx.fillText(`★ ${badgeText} ★`, 0, -band.h * 0.01);
   ctx.restore();
 
-  // Title in Anton with a sunset gradient fill and ink outline.
+  // Title in Anton, painted in the chosen title style.
   const title = (state.title || 'NEON COAST').toUpperCase();
   const titleSize = fitFont(ctx, title, band.w * 0.88, band.h * 0.44, 'Anton, sans-serif');
-  const titleGrad = ctx.createLinearGradient(0, band.y + band.h * 0.3, 0, band.y + band.h * 0.86);
-  titleGrad.addColorStop(0, grade.title[0]); titleGrad.addColorStop(0.55, grade.title[1]); titleGrad.addColorStop(1, grade.title[2]);
-  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-  ctx.lineJoin = 'round';
-  ctx.font = `${titleSize}px Anton, sans-serif`;
-  ctx.strokeStyle = '#14081f'; ctx.lineWidth = Math.max(3, titleSize * 0.09);
-  ctx.strokeText(title, band.x + band.w * 0.05, band.y + band.h * 0.72);
-  ctx.fillStyle = titleGrad;
-  ctx.fillText(title, band.x + band.w * 0.05, band.y + band.h * 0.72);
+  paintTitle(ctx, title, titleSize, band, grade, state.titleStyle || 'sunset');
 
   // Script subtitle with a neon glow, and the star heat meter.
   const sub = state.subtitle || '';
@@ -329,6 +462,9 @@ export function drawCover(canvas, state) {
   for (let s = 0; s < 5; s++) {
     drawStar(ctx, starX0 + s * starR * 2.4, band.y + band.h * 0.9, starR, s < state.stars ? '#ffd319' : 'rgba(255,255,255,0.22)');
   }
+
+  // Decor stamps the user placed on the cover, on top of everything else.
+  (state.stamps || []).forEach((st) => drawStamp(ctx, st, w, h));
 
   // Grain + vignette over everything.
   ctx.save();
