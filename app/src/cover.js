@@ -321,12 +321,13 @@ export function drawCover(canvas, state) {
     ctx.font = `${subSize}px Pacifico, cursive`;
     ctx.fillStyle = grade.sub;
     ctx.shadowColor = grade.sub; ctx.shadowBlur = band.h * 0.12;
-    ctx.fillText(sub, band.x + band.w * 0.055, band.y + band.h * 0.94);
+    ctx.fillText(sub, band.x + band.w * 0.055, band.y + band.h * 0.88);
     ctx.shadowBlur = 0;
   }
   const starR = band.h * 0.075;
+  const starX0 = band.x + band.w * 0.97 - 5 * starR * 2.4;
   for (let s = 0; s < 5; s++) {
-    drawStar(ctx, band.x + band.w * 0.72 + s * starR * 2.5, band.y + band.h * 0.9, starR, s < state.stars ? '#ffd319' : 'rgba(255,255,255,0.22)');
+    drawStar(ctx, starX0 + s * starR * 2.4, band.y + band.h * 0.9, starR, s < state.stars ? '#ffd319' : 'rgba(255,255,255,0.22)');
   }
 
   // Grain + vignette over everything.
