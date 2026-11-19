@@ -1,4 +1,6 @@
 // Neon Coast Cover Studio — the hand-in program for gta6-cover-art-01.
+// V2: the same hand-in, now carrying the Loading Screen layout, title
+// styles and decor stamps built in app/ (see README.md).
 // Node 22, standard library only. It copies this repository's app/ and
 // screenshots/ into /output (or MAKEFUN_OUTPUT_DIR outside the grader) and
 // writes /output/dossier.json with the vendored make.fun library, exactly as
