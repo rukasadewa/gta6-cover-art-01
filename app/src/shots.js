@@ -19,12 +19,21 @@ export async function runShot(shot, query, state, helpers) {
   }
 
   // Scene choices from the query, with poster defaults.
-  const layout = query.get('layout') ?? 'vice-grid';
+  const layout = query.get('layout') ?? 'loading';
   const grade = query.get('grade') ?? 'sunset';
   state.title = query.get('title') ?? 'NEON COAST';
   state.subtitle = query.get('subtitle') ?? 'chasing the sunset';
   state.badge = query.get('badge') ?? 'PALM SHORES';
   state.stars = Number(query.get('stars') ?? 5);
+  state.titleStyle = query.get('titlestyle') ?? 'sunset';
+  // Stamps: type:x,y,size,rot | type:x,y,size,rot — coords are 0..1 of the cover.
+  const stampsParam = query.get('stamps');
+  state.stamps = stampsParam
+    ? stampsParam.split('|').map((part) => {
+      const [type, x, y, size, rot] = part.split(',');
+      return { type, x: Number(x), y: Number(y), size: Number(size), rot: Number(rot || 0) };
+    }).filter((s) => s.type && Number.isFinite(s.x) && Number.isFinite(s.y))
+    : [];
   state.layout = layout;
   state.grade = grade;
   state.panels = panelsForLayout(layout, []);
@@ -45,6 +54,7 @@ export async function runShot(shot, query, state, helpers) {
   if (shot === 'editor') {
     document.querySelectorAll('[data-layout]').forEach((b) => b.classList.toggle('on', b.dataset.layout === state.layout));
     document.querySelectorAll('[data-grade]').forEach((b) => b.classList.toggle('on', b.dataset.grade === state.grade));
+    document.querySelectorAll('[data-title-style]').forEach((b) => b.classList.toggle('on', b.dataset.titleStyle === state.titleStyle));
     document.querySelectorAll('[data-size]').forEach((b) => b.classList.toggle('on', b.dataset.size === state.size));
     const t = document.getElementById('title'); if (t) t.value = state.title;
     const s = document.getElementById('subtitle'); if (s) s.value = state.subtitle;

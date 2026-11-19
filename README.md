@@ -22,6 +22,15 @@ Anton lettering with a Pacifico script subtitle, exported as a PNG to share.
 - **Fast and easy** — photo to PNG in a few clicks, in 1080 × 1080,
   1080 × 1350 and 1920 × 1080, plus an "Export all 3 sizes" button and
   undo/redo and a "Surprise me" randomizer.
+- **V2 — Loading Screen layout** — one hero photo fills the whole cover
+  edge to edge, with the giant title laid over a sunset scrim at the
+  bottom, like a game loading screen. It is the first screenshot.
+- **V2 — Title styles** — Sunset Gradient, Chrome (silver-blue metal) and
+  Neon Outline (glowing outline only). The style applies to the title in
+  every layout.
+- **V2 — Decor stamps** — hand-drawn doodle stamps (sun, palm, lightning,
+  sparkle star) you can drop on the cover, drag to move, resize, tilt or
+  remove. Drawn with canvas paths in the app itself.
 - **Offline** — static files under `app/`, no network request. Fonts
   (Anton, Pacifico, Bebas Neue) are vendored under `app/fonts/` under the
   SIL Open Font License. Photos never leave the machine. No Rockstar logo,
