@@ -35,7 +35,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .row .ghost { flex: 1; }
 .preview { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0; position: sticky; top: 12px; }
 canvas { max-width: 100%; max-height: calc(100vh - 170px); width: auto; height: auto; box-shadow: 0 12px 44px rgba(0, 0, 0, 0.55); border-radius: 4px; cursor: crosshair; }
-body.shot-cover { background: #14081f; }
+body.shot-cover { background: #14081f; overflow: hidden; }
 body.shot-cover .topbar, body.shot-cover .controls, body.shot-cover .preview .hint { display: none; }
 body.shot-cover .app { padding: 0; display: block; }
 body.shot-cover .preview { display: block; position: static; }

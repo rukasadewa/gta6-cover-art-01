@@ -30,9 +30,10 @@ export async function runShot(shot, query, state, helpers) {
   const stampsParam = query.get('stamps');
   state.stamps = stampsParam
     ? stampsParam.split('|').map((part) => {
-      const [type, x, y, size, rot] = part.split(',');
+      const [type, rest = ''] = part.split(':');
+      const [x, y, size, rot] = rest.split(',');
       return { type, x: Number(x), y: Number(y), size: Number(size), rot: Number(rot || 0) };
-    }).filter((s) => s.type && Number.isFinite(s.x) && Number.isFinite(s.y))
+    }).filter((s) => s.type && Number.isFinite(s.x) && Number.isFinite(s.y) && Number.isFinite(s.size))
     : [];
   state.layout = layout;
   state.grade = grade;

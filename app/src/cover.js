@@ -372,8 +372,10 @@ export function drawCover(canvas, state) {
   geo.panels.forEach((rect, i) => {
     const panel = state.panels[i] ?? { photo: i % 4, zoom: 1, panX: 0, panY: 0 };
     const img = state.photos[panel.photo]?.img ?? null;
-    ctx.save();
+    // No outer save here: each branch manages its own state (drawPhotoInto
+    // and gradeWash save/restore internally), so nothing leaks per redraw.
     if (rect.rot) {
+      ctx.save();
       ctx.translate(rect.x + rect.w / 2, rect.y + rect.h / 2);
       ctx.rotate(rect.rot * Math.PI / 180);
       ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = w * 0.03; ctx.shadowOffsetY = w * 0.012;
