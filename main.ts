@@ -1,11 +1,11 @@
-// Neon Coast Cover Studio — the hand-in program for gta6-cover-art-01.
-// V2: the same hand-in, now carrying the Loading Screen layout, title
-// styles and decor stamps built in app/ (see README.md).
-// Node 22, standard library only. It copies this repository's app/ and
-// screenshots/ into /output (or MAKEFUN_OUTPUT_DIR outside the grader) and
-// writes /output/dossier.json with the vendored make.fun library, exactly as
-// the kit's starter did — the app itself is what I built new in app/.
-// Run it locally with: mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// Neon Coast Cover Studio — the hand-in program for gta6-cover-art-01,
+// rebuilt for round 3. Node 22, standard library only.
+// It copies this repository's app/ and screenshots/ into /output (or
+// MAKEFUN_OUTPUT_DIR outside the grader) and writes /output/dossier.json
+// with the vendored make.fun library — the app itself is what was built
+// new in app/, including the Loading Screen layout, title styles and
+// decor stamps. Run it locally with:
+//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -18,12 +18,15 @@ const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'app'), join(out, 'app'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+if (existsSync(join(here, 'screenshots'))) {
+  cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+}
 
-// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
-// scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in app/ or 48 MiB of app
-// files, in all, or a path under app/ over 1000 bytes: app/ counts beside /output's own 1000-entry cap, its
-// screenshots/ and dossier.json).
+// The scorer's own caps (reference/gate.json): only text_max_bytes shapes
+// the bytes; the rest refuse an entry the scorer would refuse — more than
+// 4 screenshots or one over 256 KiB; more than 993 files in app/ or 48 MiB
+// of app files in all, or a path under app/ over 1000 bytes (app/ counts
+// beside /output's own 1000-entry cap, its screenshots/ and dossier.json).
 writeFileSync(
   join(out, 'dossier.json'),
   buildDossier(out, {

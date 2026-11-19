@@ -1,21 +1,185 @@
-// Neon Coast Cover Studio — wires the editor page: photo slots, layouts,
-// grades, caption, per-panel crop and zoom, undo/redo, PNG export.
-// A `?shot=` query sets up a fixed scene for a screenshot instead (./shots.js).
+// Neon Coast Cover Studio — the editor page, rebuilt for round 3.
+// Wires the controls to the cover engine: photo slots, layouts, grades,
+// lettering, title styles, decor stamps, per-panel crop, undo/redo, export.
+// A `?shot=` query instead sets up a fixed scene for a screenshot (shots.js).
 import { drawCover, defaultState, panelsForLayout, layoutGeometry, stampAt, LAYOUTS, GRADES, SIZES, TITLE_STYLES, STAMPS } from './cover.js';
 import { runShot } from './shots.js';
 
-const canvas = document.getElementById('cover');
-const status = document.getElementById('status');
+const $ = (id) => document.getElementById(id);
+const canvas = $('cover');
+const statusLine = $('status');
+
 const state = defaultState();
 state.panels = panelsForLayout(state.layout, []);
-let selected = 0;
+
+let selectedPanel = 0;
 let selectedStamp = -1;
-let undoStack = [];
-let redoStack = [];
+const past = [];
+const future = [];
 
-const $ = (id) => document.getElementById(id);
+// ---- history ------------------------------------------------------------
 
-/** Loads an image from a URL, resolving once it can be drawn. */
+// Only the editable bits are snapshotted — photos hold Image objects.
+function takeSnapshot() {
+  return JSON.stringify({
+    layout: state.layout,
+    grade: state.grade,
+    title: state.title,
+    subtitle: state.subtitle,
+    badge: state.badge,
+    stars: state.stars,
+    titleStyle: state.titleStyle,
+    stamps: state.stamps,
+    panels: state.panels,
+  });
+}
+
+function pushHistory() {
+  past.push(takeSnapshot());
+  if (past.length > 60) past.shift();
+  future.length = 0;
+  refreshHistoryButtons();
+}
+
+function applySnapshot(json) {
+  const s = JSON.parse(json);
+  state.layout = s.layout;
+  state.grade = s.grade;
+  state.title = s.title;
+  state.subtitle = s.subtitle;
+  state.badge = s.badge;
+  state.stars = s.stars;
+  state.titleStyle = s.titleStyle || 'sunset';
+  state.stamps = s.stamps || [];
+  state.panels = s.panels;
+  selectedStamp = -1;
+  syncAll();
+  repaint();
+}
+
+function refreshHistoryButtons() {
+  $('undo').disabled = past.length === 0;
+  $('redo').disabled = future.length === 0;
+}
+
+// ---- painting -----------------------------------------------------------
+
+function repaint() {
+  const size = SIZES.find((entry) => entry.id === state.size) ?? SIZES[0];
+  canvas.width = size.w;
+  canvas.height = size.h;
+  drawCover(canvas, state);
+  syncPanelControls();
+}
+
+// ---- control sync -------------------------------------------------------
+
+function markOn(container, attr, value) {
+  container.querySelectorAll(`[data-${attr}]`).forEach((el) => {
+    el.classList.toggle('on', el.dataset[attr] === String(value));
+  });
+}
+
+function syncAll() {
+  $('title').value = state.title;
+  $('subtitle').value = state.subtitle;
+  $('badge').value = state.badge;
+  markOn($('layouts'), 'layout', state.layout);
+  markOn($('grades'), 'grade', state.grade);
+  markOn($('sizes'), 'size', state.size);
+  markOn($('titleStyles'), 'titleStyle', state.titleStyle);
+  document.querySelectorAll('[data-stars]').forEach((el) => {
+    el.classList.toggle('on', Number(el.dataset.stars) === state.stars);
+  });
+  syncStampControls();
+}
+
+function syncStampControls() {
+  const st = state.stamps[selectedStamp];
+  $('stampLabel').textContent = st
+    ? `${STAMPS.find((entry) => entry.id === st.type)?.name ?? 'Stamp'} ${selectedStamp + 1} of ${state.stamps.length} — drag it on the cover to move it.`
+    : state.stamps.length
+      ? `${state.stamps.length} stamp${state.stamps.length === 1 ? '' : 's'} on the cover — click one to edit it.`
+      : 'No stamp selected';
+  $('stampSize').value = st ? st.size : 0.16;
+  $('stampRot').value = st ? st.rot : 0;
+  $('removeStamp').disabled = !st;
+}
+
+function syncPanelControls() {
+  const panel = state.panels[selectedPanel];
+  if (!panel) return;
+  $('panelLabel').textContent = `Panel ${selectedPanel + 1} of ${state.panels.length}`;
+  $('zoom').value = panel.zoom;
+  $('panX').value = panel.panX;
+  $('panY').value = panel.panY;
+  const sel = $('panelPhoto');
+  sel.innerHTML = state.photos
+    .map((p, i) => `<option value="${i}" ${i === panel.photo ? 'selected' : ''}>${p.name}</option>`)
+    .join('');
+}
+
+// ---- state changes ------------------------------------------------------
+
+function pickLayout(id) {
+  if (id === state.layout) return;
+  pushHistory();
+  state.layout = id;
+  state.panels = panelsForLayout(id, state.panels);
+  selectedPanel = 0;
+  syncAll();
+  repaint();
+}
+
+function pickGrade(id) {
+  if (id === state.grade) return;
+  pushHistory();
+  state.grade = id;
+  syncAll();
+  repaint();
+}
+
+function pickTitleStyle(id) {
+  if (id === state.titleStyle) return;
+  pushHistory();
+  state.titleStyle = id;
+  syncAll();
+  repaint();
+}
+
+function pickSize(id) {
+  state.size = id;
+  syncAll();
+  repaint();
+  statusLine.textContent = `Preview ${id.replace('x', ' × ')} — export writes a full-size PNG.`;
+}
+
+function dropStamp(type) {
+  pushHistory();
+  state.stamps.push({
+    type,
+    x: 0.18 + Math.random() * 0.64,
+    y: 0.18 + Math.random() * 0.3,
+    size: 0.16,
+    rot: Math.floor(Math.random() * 17) - 8,
+  });
+  selectedStamp = state.stamps.length - 1;
+  syncAll();
+  repaint();
+  statusLine.textContent = 'Stamp added — drag it on the cover to place it.';
+}
+
+function removeStamp() {
+  if (selectedStamp < 0) return;
+  pushHistory();
+  state.stamps.splice(selectedStamp, 1);
+  selectedStamp = -1;
+  syncAll();
+  repaint();
+}
+
+// ---- photos -------------------------------------------------------------
+
 export function loadImage(url) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -25,137 +189,9 @@ export function loadImage(url) {
   });
 }
 
-function snapshot() {
-  return JSON.stringify({ layout: state.layout, grade: state.grade, title: state.title, subtitle: state.subtitle, badge: state.badge, stars: state.stars, titleStyle: state.titleStyle, stamps: state.stamps, panels: state.panels, photoIdx: state.photos.map((p) => p.name) });
-}
-
-function pushUndo() {
-  undoStack.push(snapshot());
-  if (undoStack.length > 60) undoStack.shift();
-  redoStack = [];
-  syncUndoButtons();
-}
-
-function restore(json) {
-  const s = JSON.parse(json);
-  state.layout = s.layout; state.grade = s.grade; state.title = s.title;
-  state.subtitle = s.subtitle; state.badge = s.badge; state.stars = s.stars;
-  state.titleStyle = s.titleStyle || 'sunset';
-  state.stamps = s.stamps || [];
-  selectedStamp = -1;
-  state.panels = s.panels;
-  syncControls();
-  redraw();
-}
-
-function syncUndoButtons() {
-  $('undo').disabled = undoStack.length === 0;
-  $('redo').disabled = redoStack.length === 0;
-}
-
-function applySizeToCanvas() {
-  const size = SIZES.find((s) => s.id === state.size) ?? SIZES[0];
-  canvas.width = size.w; canvas.height = size.h;
-}
-
-function redraw() {
-  applySizeToCanvas();
-  drawCover(canvas, state);
-  syncPanelControls();
-}
-
-function syncControls() {
-  $('title').value = state.title;
-  $('subtitle').value = state.subtitle;
-  $('badge').value = state.badge;
-  document.querySelectorAll('[data-layout]').forEach((b) => b.classList.toggle('on', b.dataset.layout === state.layout));
-  document.querySelectorAll('[data-grade]').forEach((b) => b.classList.toggle('on', b.dataset.grade === state.grade));
-  document.querySelectorAll('[data-size]').forEach((b) => b.classList.toggle('on', b.dataset.size === state.size));
-  document.querySelectorAll('[data-stars]').forEach((b) => b.classList.toggle('on', Number(b.dataset.stars) === state.stars));
-  document.querySelectorAll('[data-title-style]').forEach((b) => b.classList.toggle('on', b.dataset.titleStyle === state.titleStyle));
-  syncStampControls();
-}
-
-function syncStampControls() {
-  const st = state.stamps[selectedStamp];
-  $('stampLabel').textContent = st
-    ? `${STAMPS.find((s) => s.id === st.type)?.name ?? 'Stamp'} ${selectedStamp + 1} of ${state.stamps.length} — drag it on the cover to move it.`
-    : (state.stamps.length ? `${state.stamps.length} stamp${state.stamps.length === 1 ? '' : 's'} on the cover — click one to edit it.` : 'No stamp selected');
-  $('stampSize').value = st ? st.size : 0.16;
-  $('stampRot').value = st ? st.rot : 0;
-  $('removeStamp').disabled = !st;
-}
-
-function syncPanelControls() {
-  const panel = state.panels[selected];
-  if (!panel) return;
-  $('panelLabel').textContent = `Panel ${selected + 1} of ${state.panels.length}`;
-  $('zoom').value = panel.zoom;
-  $('panX').value = panel.panX;
-  $('panY').value = panel.panY;
-  const sel = $('panelPhoto');
-  sel.innerHTML = state.photos.map((p, i) => `<option value="${i}" ${i === panel.photo ? 'selected' : ''}>${p.name}</option>`).join('');
-  document.querySelectorAll('.slot').forEach((el, i) => el.classList.toggle('on', state.photos[i] && state.photos[i].img === state.photos[panel.photo]?.img));
-}
-
-function setLayout(id) {
-  if (id === state.layout) return;
-  pushUndo();
-  state.layout = id;
-  state.panels = panelsForLayout(id, state.panels);
-  selected = 0;
-  syncControls(); redraw();
-}
-
-function setGrade(id) {
-  if (id === state.grade) return;
-  pushUndo();
-  state.grade = id;
-  syncControls(); redraw();
-}
-
-function setTitleStyle(id) {
-  if (id === state.titleStyle) return;
-  pushUndo();
-  state.titleStyle = id;
-  syncControls(); redraw();
-}
-
-function addStamp(type) {
-  pushUndo();
-  state.stamps.push({
-    type,
-    x: 0.18 + Math.random() * 0.64,
-    y: 0.18 + Math.random() * 0.3,
-    size: 0.16,
-    rot: Math.floor(Math.random() * 17) - 8,
-  });
-  selectedStamp = state.stamps.length - 1;
-  syncControls(); redraw();
-  status.textContent = 'Stamp added — drag it on the cover to place it.';
-}
-
-function removeSelectedStamp() {
-  if (selectedStamp < 0) return;
-  pushUndo();
-  state.stamps.splice(selectedStamp, 1);
-  selectedStamp = -1;
-  syncControls(); redraw();
-}
-
-function setSize(id) {
-  state.size = id;
-  syncControls(); redraw();
-  status.textContent = `Preview ${id.replace('x', ' × ')} — export writes a full-size PNG.`;
-}
-
-async function addPhoto(img, name) {
+function keepPhoto(img, name) {
   if (state.photos.length >= 4) state.photos.shift();
   state.photos.push({ img, name });
-  if (state.photos.length === 1) {
-    state.panels = panelsForLayout(state.layout, state.panels.map((p) => ({ ...p, photo: 0 })));
-  }
-  redraw();
 }
 
 async function loadSamples() {
@@ -164,156 +200,212 @@ async function loadSamples() {
     try {
       const img = await loadImage(`samples/${name}.jpg`);
       if (!state.photos.some((p) => p.name === name)) state.photos.push({ img, name });
-    } catch { /* a missing sample just skips */ }
+    } catch {
+      // A missing sample just skips; the rest still load.
+    }
   }
-  state.panels = panelsForLayout(state.layout, state.panels.map((p, i) => ({ ...p, photo: i % state.photos.length })));
-  redraw();
+  state.panels = panelsForLayout(
+    state.layout,
+    state.panels.map((p, i) => ({ ...p, photo: i % Math.max(1, state.photos.length) })),
+  );
+  repaint();
 }
 
-// ---- Controls ----
-const layoutBox = $('layouts');
-LAYOUTS.forEach((l) => {
+// ---- building the controls ----------------------------------------------
+
+// A chip button with a bold name line and a small description line.
+function makeChip(label, sub, dataset, onClick) {
   const b = document.createElement('button');
-  b.type = 'button'; b.dataset.layout = l.id; b.className = 'chip';
-  b.innerHTML = `<b>${l.name}</b><span>${l.blurb} · ${l.panels} panels</span>`;
-  b.addEventListener('click', () => setLayout(l.id));
-  layoutBox.appendChild(b);
+  b.type = 'button';
+  b.className = 'chip';
+  Object.entries(dataset).forEach(([key, value]) => {
+    b.dataset[key] = value;
+  });
+  b.innerHTML = `<b>${label}</b><span>${sub}</span>`;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+LAYOUTS.forEach((entry) => {
+  $('layouts').appendChild(
+    makeChip(entry.name, `${entry.blurb} · ${entry.panels} panels`, { layout: entry.id }, () => pickLayout(entry.id)),
+  );
 });
 
-const gradeBox = $('grades');
-GRADES.forEach((g) => {
+GRADES.forEach((entry) => {
   const b = document.createElement('button');
-  b.type = 'button'; b.dataset.grade = g.id; b.className = 'swatch';
-  b.style.background = `linear-gradient(135deg, ${g.sky[0]}, ${g.sky[1]} 55%, ${g.sky[2]})`;
-  b.title = g.name; b.textContent = g.name;
-  b.addEventListener('click', () => setGrade(g.id));
-  gradeBox.appendChild(b);
+  b.type = 'button';
+  b.dataset.grade = entry.id;
+  b.className = 'swatch';
+  b.style.background = `linear-gradient(135deg, ${entry.sky[0]}, ${entry.sky[1]} 55%, ${entry.sky[2]})`;
+  b.title = entry.name;
+  b.textContent = entry.name;
+  b.addEventListener('click', () => pickGrade(entry.id));
+  $('grades').appendChild(b);
 });
 
-const titleStyleBox = $('titleStyles');
-TITLE_STYLES.forEach((t) => {
-  const b = document.createElement('button');
-  b.type = 'button'; b.dataset.titleStyle = t.id; b.className = 'chip';
-  b.innerHTML = `<b>${t.name}</b><span>${t.blurb}</span>`;
-  b.addEventListener('click', () => setTitleStyle(t.id));
-  titleStyleBox.appendChild(b);
+TITLE_STYLES.forEach((entry) => {
+  $('titleStyles').appendChild(
+    makeChip(entry.name, entry.blurb, { titleStyle: entry.id }, () => pickTitleStyle(entry.id)),
+  );
 });
 
-const stampBox = $('stamps');
-STAMPS.forEach((s) => {
-  const b = document.createElement('button');
-  b.type = 'button'; b.dataset.stamp = s.id; b.className = 'chip stamp';
-  b.innerHTML = `<span class="glyph">${s.glyph}</span><b>${s.name}</b><span>${s.blurb}</span>`;
-  b.addEventListener('click', () => addStamp(s.id));
-  stampBox.appendChild(b);
+STAMPS.forEach((entry) => {
+  const b = makeChip(entry.name, entry.blurb, { stamp: entry.id }, () => dropStamp(entry.id));
+  b.classList.add('stamp');
+  b.innerHTML = `<span class="glyph">${entry.glyph}</span><b>${entry.name}</b><span>${entry.blurb}</span>`;
+  $('stamps').appendChild(b);
 });
-$('stampSize').addEventListener('input', (e) => {
-  const st = state.stamps[selectedStamp];
-  if (!st) return;
-  st.size = Number(e.target.value);
-  redraw();
-});
-$('stampSize').addEventListener('change', pushUndo);
-$('stampRot').addEventListener('input', (e) => {
-  const st = state.stamps[selectedStamp];
-  if (!st) return;
-  st.rot = Number(e.target.value);
-  redraw();
-});
-$('stampRot').addEventListener('change', pushUndo);
-$('removeStamp').addEventListener('click', removeSelectedStamp);
 
-const sizeBox = $('sizes');
-SIZES.forEach((s) => {
-  const b = document.createElement('button');
-  b.type = 'button'; b.dataset.size = s.id; b.className = 'chip';
-  b.innerHTML = `<b>${s.w} × ${s.h}</b><span>${s.id === '1080x1080' ? 'Square post' : s.id === '1080x1350' ? 'Portrait post' : 'Wide post'}</span>`;
-  b.addEventListener('click', () => setSize(s.id));
-  sizeBox.appendChild(b);
+SIZES.forEach((entry) => {
+  const sub = entry.id === '1080x1080' ? 'Square post' : entry.id === '1080x1350' ? 'Portrait post' : 'Wide post';
+  $('sizes').appendChild(
+    makeChip(`${entry.w} × ${entry.h}`, sub, { size: entry.id }, () => pickSize(entry.id)),
+  );
 });
 
 [1, 2, 3, 4, 5].forEach((n) => {
   const b = document.createElement('button');
-  b.type = 'button'; b.dataset.stars = n; b.className = 'chip star';
+  b.type = 'button';
+  b.dataset.stars = n;
+  b.className = 'chip star';
   b.textContent = '★'.repeat(n);
-  b.addEventListener('click', () => { pushUndo(); state.stars = n; syncControls(); redraw(); });
+  b.addEventListener('click', () => {
+    pushHistory();
+    state.stars = n;
+    syncAll();
+    repaint();
+  });
   $('stars').appendChild(b);
 });
 
-$('title').addEventListener('input', (e) => { state.title = e.target.value; redraw(); });
-$('subtitle').addEventListener('input', (e) => { state.subtitle = e.target.value; redraw(); });
-$('badge').addEventListener('input', (e) => { state.badge = e.target.value; redraw(); });
-$('title').addEventListener('change', pushUndo);
-$('subtitle').addEventListener('change', pushUndo);
-$('badge').addEventListener('change', pushUndo);
+// ---- wiring the inputs --------------------------------------------------
+
+$('title').addEventListener('input', (e) => {
+  state.title = e.target.value;
+  repaint();
+});
+$('subtitle').addEventListener('input', (e) => {
+  state.subtitle = e.target.value;
+  repaint();
+});
+$('badge').addEventListener('input', (e) => {
+  state.badge = e.target.value;
+  repaint();
+});
+['title', 'subtitle', 'badge'].forEach((id) => {
+  $(id).addEventListener('change', pushHistory);
+});
+
+$('stampSize').addEventListener('input', (e) => {
+  const st = state.stamps[selectedStamp];
+  if (!st) return;
+  st.size = Number(e.target.value);
+  repaint();
+});
+$('stampRot').addEventListener('input', (e) => {
+  const st = state.stamps[selectedStamp];
+  if (!st) return;
+  st.rot = Number(e.target.value);
+  repaint();
+});
+$('stampSize').addEventListener('change', pushHistory);
+$('stampRot').addEventListener('change', pushHistory);
+$('removeStamp').addEventListener('click', removeStamp);
 
 $('photos').addEventListener('change', async (e) => {
   for (const file of e.target.files) {
     const img = await loadImage(URL.createObjectURL(file));
-    await addPhoto(img, file.name.replace(/\.[^.]+$/, '').slice(0, 14) || 'photo');
+    keepPhoto(img, file.name.replace(/\.[^.]+$/, '').slice(0, 14) || 'photo');
   }
-  status.textContent = `${state.photos.length} photo${state.photos.length === 1 ? '' : 's'} loaded — click a panel, then drag it to crop.`;
+  repaint();
+  statusLine.textContent = `${state.photos.length} photo${state.photos.length === 1 ? '' : 's'} loaded — click a panel, then drag it to crop.`;
 });
 $('loadSamples').addEventListener('click', async () => {
   await loadSamples();
-  status.textContent = '4 sample photos loaded — one per panel. Swap any panel below.';
+  statusLine.textContent = '4 sample photos loaded — one per panel. Swap any panel below.';
 });
+
 $('panelPhoto').addEventListener('change', (e) => {
-  pushUndo();
-  state.panels[selected].photo = Number(e.target.value);
-  redraw();
+  pushHistory();
+  state.panels[selectedPanel].photo = Number(e.target.value);
+  repaint();
 });
-$('zoom').addEventListener('input', (e) => { state.panels[selected].zoom = Number(e.target.value); redraw(); });
-$('zoom').addEventListener('change', pushUndo);
-$('panX').addEventListener('input', (e) => { state.panels[selected].panX = Number(e.target.value); redraw(); });
-$('panY').addEventListener('input', (e) => { state.panels[selected].panY = Number(e.target.value); redraw(); });
-$('panX').addEventListener('change', pushUndo);
-$('panY').addEventListener('change', pushUndo);
+$('zoom').addEventListener('input', (e) => {
+  state.panels[selectedPanel].zoom = Number(e.target.value);
+  repaint();
+});
+$('panX').addEventListener('input', (e) => {
+  state.panels[selectedPanel].panX = Number(e.target.value);
+  repaint();
+});
+$('panY').addEventListener('input', (e) => {
+  state.panels[selectedPanel].panY = Number(e.target.value);
+  repaint();
+});
+['zoom', 'panX', 'panY'].forEach((id) => {
+  $(id).addEventListener('change', pushHistory);
+});
 $('resetCrop').addEventListener('click', () => {
-  pushUndo();
-  state.panels[selected].zoom = 1; state.panels[selected].panX = 0; state.panels[selected].panY = 0;
-  redraw();
+  pushHistory();
+  const panel = state.panels[selectedPanel];
+  panel.zoom = 1;
+  panel.panX = 0;
+  panel.panY = 0;
+  repaint();
 });
 
 $('undo').addEventListener('click', () => {
-  if (!undoStack.length) return;
-  redoStack.push(snapshot());
-  restore(undoStack.pop());
-  syncUndoButtons();
+  if (!past.length) return;
+  future.push(takeSnapshot());
+  applySnapshot(past.pop());
+  refreshHistoryButtons();
 });
 $('redo').addEventListener('click', () => {
-  if (!redoStack.length) return;
-  undoStack.push(snapshot());
-  restore(redoStack.pop());
-  syncUndoButtons();
+  if (!future.length) return;
+  past.push(takeSnapshot());
+  applySnapshot(future.pop());
+  refreshHistoryButtons();
 });
 
 $('surprise').addEventListener('click', () => {
-  pushUndo();
+  pushHistory();
   state.layout = LAYOUTS[Math.floor(Math.random() * LAYOUTS.length)].id;
   state.grade = GRADES[Math.floor(Math.random() * GRADES.length)].id;
   state.titleStyle = TITLE_STYLES[Math.floor(Math.random() * TITLE_STYLES.length)].id;
   state.panels = panelsForLayout(state.layout, state.panels);
-  state.panels.forEach((p) => { p.photo = Math.floor(Math.random() * Math.max(1, state.photos.length)); p.zoom = 1 + Math.random() * 0.4; p.panX = (Math.random() - 0.5) * 0.8; p.panY = (Math.random() - 0.5) * 0.8; });
-  selected = 0;
-  syncControls(); redraw();
-  status.textContent = 'Surprise layout — tweak it, then export.';
+  state.panels.forEach((p) => {
+    p.photo = Math.floor(Math.random() * Math.max(1, state.photos.length));
+    p.zoom = 1 + Math.random() * 0.4;
+    p.panX = (Math.random() - 0.5) * 0.8;
+    p.panY = (Math.random() - 0.5) * 0.8;
+  });
+  selectedPanel = 0;
+  syncAll();
+  repaint();
+  statusLine.textContent = 'Surprise layout — tweak it, then export.';
 });
 
-// Click a stamp to select it, a panel to select it; drag to move either.
-let dragging = null;
-let draggingStamp = null;
-function canvasPoint(e) {
+// ---- dragging on the canvas ---------------------------------------------
+
+// One drag at a time: either a stamp (move it) or a panel (pan its photo).
+let drag = null;
+
+function toCanvasPoint(e) {
   const r = canvas.getBoundingClientRect();
-  return { x: (e.clientX - r.left) * (canvas.width / r.width), y: (e.clientY - r.top) * (canvas.height / r.height) };
+  return {
+    x: ((e.clientX - r.left) * canvas.width) / r.width,
+    y: ((e.clientY - r.top) * canvas.height) / r.height,
+  };
 }
+
 canvas.addEventListener('pointerdown', (e) => {
-  const pt = canvasPoint(e);
-  const stampHit = stampAt(state, pt.x, pt.y, canvas.width, canvas.height);
-  if (stampHit >= 0) {
-    selectedStamp = stampHit;
-    const st = state.stamps[stampHit];
-    draggingStamp = { x: pt.x, y: pt.y, sx: st.x, sy: st.y };
+  const pt = toCanvasPoint(e);
+  const hitStamp = stampAt(state, pt.x, pt.y, canvas.width, canvas.height);
+  if (hitStamp >= 0) {
+    selectedStamp = hitStamp;
+    const st = state.stamps[hitStamp];
+    drag = { kind: 'stamp', x: pt.x, y: pt.y, sx: st.x, sy: st.y };
     canvas.setPointerCapture(e.pointerId);
     syncStampControls();
     return;
@@ -321,56 +413,65 @@ canvas.addEventListener('pointerdown', (e) => {
   selectedStamp = -1;
   syncStampControls();
   const geo = layoutGeometry(state.layout, canvas.width, canvas.height);
-  const hit = geo.panels.findIndex((p) => pt.x >= p.x && pt.x <= p.x + p.w && pt.y >= p.y && pt.y <= p.y + p.h);
-  if (hit >= 0) {
-    selected = hit;
-    dragging = { x: pt.x, y: pt.y, panX: state.panels[hit].panX, panY: state.panels[hit].panY };
+  const hitPanel = geo.panels.findIndex(
+    (p) => pt.x >= p.x && pt.x <= p.x + p.w && pt.y >= p.y && pt.y <= p.y + p.h,
+  );
+  if (hitPanel >= 0) {
+    selectedPanel = hitPanel;
+    const panel = state.panels[hitPanel];
+    drag = { kind: 'panel', x: pt.x, y: pt.y, panX: panel.panX, panY: panel.panY };
     canvas.setPointerCapture(e.pointerId);
     syncPanelControls();
   }
 });
+
 canvas.addEventListener('pointermove', (e) => {
-  if (draggingStamp) {
-    const pt = canvasPoint(e);
+  if (!drag) return;
+  const pt = toCanvasPoint(e);
+  if (drag.kind === 'stamp') {
     const st = state.stamps[selectedStamp];
-    st.x = Math.max(0.03, Math.min(0.97, draggingStamp.sx + (pt.x - draggingStamp.x) / canvas.width));
-    st.y = Math.max(0.03, Math.min(0.97, draggingStamp.sy + (pt.y - draggingStamp.y) / canvas.height));
-    redraw();
-    return;
+    st.x = Math.max(0.03, Math.min(0.97, drag.sx + (pt.x - drag.x) / canvas.width));
+    st.y = Math.max(0.03, Math.min(0.97, drag.sy + (pt.y - drag.y) / canvas.height));
+  } else {
+    const panel = state.panels[selectedPanel];
+    panel.panX = Math.max(-1, Math.min(1, drag.panX + (pt.x - drag.x) / (canvas.width * 0.28)));
+    panel.panY = Math.max(-1, Math.min(1, drag.panY + (pt.y - drag.y) / (canvas.height * 0.28)));
   }
-  if (!dragging) return;
-  const pt = canvasPoint(e);
-  const panel = state.panels[selected];
-  panel.panX = Math.max(-1, Math.min(1, dragging.panX + (pt.x - dragging.x) / (canvas.width * 0.28)));
-  panel.panY = Math.max(-1, Math.min(1, dragging.panY + (pt.y - dragging.y) / (canvas.height * 0.28)));
-  redraw();
-});
-canvas.addEventListener('pointerup', () => {
-  if (draggingStamp) { pushUndo(); draggingStamp = null; }
-  if (dragging) { pushUndo(); dragging = null; }
+  repaint();
 });
 
-// ---- Export ----
+canvas.addEventListener('pointerup', () => {
+  if (drag) {
+    pushHistory();
+    drag = null;
+  }
+});
+
+// ---- export ---------------------------------------------------------------
+
 function exportPNG(sizeId) {
-  const size = SIZES.find((s) => s.id === sizeId) ?? SIZES[0];
+  const size = SIZES.find((entry) => entry.id === sizeId) ?? SIZES[0];
   const off = document.createElement('canvas');
-  off.width = size.w; off.height = size.h;
+  off.width = size.w;
+  off.height = size.h;
   drawCover(off, state);
   off.toBlob((blob) => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `neon-coast-cover-${size.id}.png`;
     a.click();
-    status.textContent = `Saved neon-coast-cover-${size.id}.png (${size.w} × ${size.h}).`;
+    statusLine.textContent = `Saved neon-coast-cover-${size.id}.png (${size.w} × ${size.h}).`;
   }, 'image/png');
 }
+
 $('export').addEventListener('click', () => exportPNG(state.size));
 $('exportAll').addEventListener('click', () => {
-  SIZES.forEach((s, i) => setTimeout(() => exportPNG(s.id), i * 400));
-  status.textContent = 'Exporting all three sizes…';
+  SIZES.forEach((entry, i) => setTimeout(() => exportPNG(entry.id), i * 400));
+  statusLine.textContent = 'Exporting all three sizes…';
 });
 
-// ---- Boot ----
+// ---- boot -----------------------------------------------------------------
+
 async function boot() {
   try {
     await Promise.all([
@@ -379,15 +480,24 @@ async function boot() {
       document.fonts.load('bold 40px "Bebas Neue"'),
       document.fonts.ready,
     ]);
-  } catch { /* lettering falls back to system fonts */ }
-  const shot = new URLSearchParams(location.search).get('shot');
+  } catch {
+    // Lettering falls back to system fonts when the vendored ones fail.
+  }
+  const params = new URLSearchParams(location.search);
+  const shot = params.get('shot');
   if (shot) {
-    await runShot(shot, new URLSearchParams(location.search), state, { loadImage, addPhoto, loadSamples, redraw, setLayout, setGrade });
+    await runShot(shot, params, state, {
+      loadImage,
+      redraw: repaint,
+      setLayout: pickLayout,
+      setGrade: pickGrade,
+    });
   } else {
     await loadSamples();
-    syncControls();
-    redraw();
+    syncAll();
+    repaint();
   }
 }
-syncUndoButtons();
+
+refreshHistoryButtons();
 boot();
