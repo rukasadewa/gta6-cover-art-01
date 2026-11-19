@@ -41,7 +41,22 @@
     </div>
 
     <div class="group">
-      <h2>5 · Selected panel</h2>
+      <h2>5 · Title style</h2>
+      <div id="titleStyles" class="chips"></div>
+    </div>
+
+    <div class="group">
+      <h2>6 · Decor stamps</h2>
+      <div id="stamps" class="chips"></div>
+      <p class="hint">Tap a stamp to drop it on the cover, then drag it to move it. Click a stamp on the cover to resize, tilt or remove it.</p>
+      <p id="stampLabel" class="hint">No stamp selected</p>
+      <label>Stamp size <input id="stampSize" type="range" min="0.06" max="0.35" step="0.01" value="0.16"></label>
+      <label>Stamp tilt <input id="stampRot" type="range" min="-30" max="30" step="1" value="0"></label>
+      <button id="removeStamp" type="button" class="ghost">Remove selected stamp</button>
+    </div>
+
+    <div class="group">
+      <h2>7 · Selected panel</h2>
       <p id="panelLabel" class="hint">Panel 1 of 3</p>
       <label>Photo in this panel <select id="panelPhoto"></select></label>
       <label>Zoom <input id="zoom" type="range" min="1" max="2.5" step="0.05" value="1"></label>
@@ -51,7 +66,7 @@
     </div>
 
     <div class="group">
-      <h2>6 · Export</h2>
+      <h2>8 · Export</h2>
       <div id="sizes" class="chips"></div>
       <button id="export" type="button" class="primary">Export PNG</button>
       <button id="exportAll" type="button" class="ghost">Export all 3 sizes</button>
@@ -66,7 +81,7 @@
 
   <section class="preview" aria-label="Live cover preview">
     <canvas id="cover" width="1080" height="1080" aria-label="The cover"></canvas>
-    <p class="hint">Live preview — click a panel to select it, drag to reposition its photo.</p>
+    <p class="hint">Live preview — click a panel to select it, drag to reposition its photo. Click a stamp to select it, drag it to move it.</p>
   </section>
 </main>
 <script type="module" src="./src/main.js"></script>

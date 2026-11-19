@@ -26,6 +26,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 .chip span { font-size: 11px; color: #b9a8cc; }
 .chip.on { border-color: #ff2e88; background: #3d1440; box-shadow: 0 0 0 1px #ff2e88; }
 .chip.star { font-size: 15px; color: #ffd319; }
+.chip.stamp .glyph { font-size: 22px; line-height: 1; }
+/* V2: stamp chips show their doodle glyph above the name. */
 .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
 .swatch { border: 2px solid transparent; border-radius: 8px; padding: 8px 10px; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.7); font-size: 12px; }
 .swatch.on { border-color: #fff; box-shadow: 0 0 0 2px #ff2e88; }
